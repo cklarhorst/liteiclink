@@ -35,6 +35,7 @@ class _SerdesMasterInit(Module):
         # # #
         self.delay_min_rejected = delay_min_rejected = Signal(max=taps)
         self.delay_max_rejected = delay_max_rejected = Signal(max=taps)
+        self.num_rejected = num_rejected = Signal(max=40*32*2)
 
         self.delay           = delay           = Signal(max=taps)
         self.delay_min       = delay_min       = Signal(max=taps)
@@ -56,6 +57,7 @@ class _SerdesMasterInit(Module):
             NextValue(delay_max_found, 0),
             NextValue(delay_min_rejected, 0),
             NextValue(delay_max_rejected, 0),
+            NextValue(num_rejected, 0),
             serdes.rx.delay_rst.eq(1),
             NextValue(shift, 0),
             NextState("RESET-SLAVE"),
@@ -138,6 +140,7 @@ class _SerdesMasterInit(Module):
                NextValue(delay_max_found, 0),
                NextValue(delay_min_rejected, delay_min),
                NextValue(delay_max_rejected, delay_max),
+               NextValue(num_rejected, num_rejected+1),
                NextState("WAIT-STABLE")
             ).Else(
                 NextValue(delay, 0),
@@ -173,7 +176,9 @@ class _SerdesSlaveInit(Module, AutoCSR):
         # # #
         self.delay_min_rejected = delay_min_rejected = Signal(max=taps)
         self.delay_max_rejected = delay_max_rejected = Signal(max=taps)
+        self.num_rejected = num_rejected = Signal(max=40*32*2)
 
+        
         self.delay           = delay           = Signal(max=taps)
         self.delay_min       = delay_min       = Signal(max=taps)
         self.delay_min_found = delay_min_found = Signal()
@@ -194,6 +199,7 @@ class _SerdesSlaveInit(Module, AutoCSR):
             NextValue(delay_max_found, 0),
             NextValue(delay_min_rejected, 0),
             NextValue(delay_max_rejected, 0),
+            NextValue(num_rejected, 0),
             serdes.rx.delay_rst.eq(1),
             NextValue(shift, 0),
             timer.wait.eq(1),
@@ -263,6 +269,8 @@ class _SerdesSlaveInit(Module, AutoCSR):
                NextValue(delay_max_found, 0),
                NextValue(delay_min_rejected, delay_min),
                NextValue(delay_max_rejected, delay_max),
+               NextValue(num_rejected, num_rejected+1),
+
                NextState("WAIT-STABLE")
             ).Else(
                 NextValue(delay, 0),
@@ -307,6 +315,7 @@ class _SerdesControl(Module, AutoCSR):
 
         self.delay_min_rejected = CSRStatus(9)
         self.delay_max_rejected = CSRStatus(9)
+        self.num_rejected = CSRStatus(9)
         self.delay           = CSRStatus(9)
         self.delay_min_found = CSRStatus()
         self.delay_min       = CSRStatus(9)
@@ -342,7 +351,8 @@ class _SerdesControl(Module, AutoCSR):
             self.delay_max.status.eq(init.delay_max),
             self.shift.status.eq(init.shift),
             self.delay_min_rejected.status.eq(init.delay_min_rejected),
-            self.delay_max_rejected.status.eq(init.delay_max_rejected)
+            self.delay_max_rejected.status.eq(init.delay_max_rejected),
+            self.num_rejected.status.eq(init.num_rejected)
         ]
 
         # PRBS

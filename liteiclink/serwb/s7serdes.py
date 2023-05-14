@@ -17,14 +17,14 @@ from liteiclink.serwb.datapath import TXDatapath, RXDatapath
 # S7 SerDes Clocking -------------------------------------------------------------------------------
 
 class _S7SerdesClocking(Module):
-    def __init__(self, pads, mode="master"):
+    def __init__(self, pads, mode="master", rate=8):
         self.refclk = Signal()
-
+        assert rate in [4,6,8] # all supported single oserdese2 ddr rates
         # # #
 
         # In Master mode, generate the linerate/10 clock. Slave will re-multiply it.
         if mode == "master":
-            self.submodules.converter = converter = stream.Converter(40, 8)
+            self.submodules.converter = converter = stream.Converter(40, rate)
             self.comb += [
                 converter.sink.valid.eq(1),
                 converter.source.ready.eq(1),
@@ -32,7 +32,7 @@ class _S7SerdesClocking(Module):
             ]
             self.specials += [
                 Instance("OSERDESE2",
-                    p_DATA_WIDTH     = 8,
+                    p_DATA_WIDTH     = rate,
                     p_TRISTATE_WIDTH = 1,
                     p_DATA_RATE_OQ   = "DDR",
                     p_DATA_RATE_TQ   = "BUF",
@@ -40,17 +40,10 @@ class _S7SerdesClocking(Module):
 
                     i_OCE    = 1,
                     i_RST    = ResetSignal("sys"),
-                    i_CLK    = ClockSignal("sys4x"),
+                    i_CLK    = ClockSignal(f"sys{rate//2}x"),
                     i_CLKDIV = ClockSignal("sys"),
-                    i_D1     = converter.source.data[0],
-                    i_D2     = converter.source.data[1],
-                    i_D3     = converter.source.data[2],
-                    i_D4     = converter.source.data[3],
-                    i_D5     = converter.source.data[4],
-                    i_D6     = converter.source.data[5],
-                    i_D7     = converter.source.data[6],
-                    i_D8     = converter.source.data[7],
                     o_OQ     = self.refclk,
+                    **{f"i_D{i}" : converter.source.data[i] for i in range(rate)}
                 ),
                 DifferentialOutput(self.refclk, pads.clk_p, pads.clk_n)
             ]

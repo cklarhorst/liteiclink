@@ -43,7 +43,7 @@ class _S7SerdesClocking(Module):
                     i_CLK    = ClockSignal(f"sys{rate//2}x"),
                     i_CLKDIV = ClockSignal("sys"),
                     o_OQ     = self.refclk,
-                    **{f"i_D{i}" : converter.source.data[i] for i in range(rate)}
+                    **{f"i_D{i+1}" : converter.source.data[i] for i in range(rate)},
                 ),
                 DifferentialOutput(self.refclk, pads.clk_p, pads.clk_n)
             ]
@@ -55,7 +55,8 @@ class _S7SerdesClocking(Module):
 # S7 SerDes TX -------------------------------------------------------------------------------------
 
 class _S7SerdesTX(Module):
-    def __init__(self, pads):
+    def __init__(self, pads, rate=8):
+        assert rate in [4,6,8] # all supported single oserdese2 ddr rates
         # Control
         self.idle  = idle  = Signal()
         self.comma = comma = Signal()
@@ -67,7 +68,7 @@ class _S7SerdesTX(Module):
 
 
         # Datapath
-        self.submodules.datapath = datapath = TXDatapath(8)
+        self.submodules.datapath = datapath = TXDatapath(rate)
         self.comb += [
             sink.connect(datapath.sink),
             datapath.source.ready.eq(1),
@@ -76,12 +77,12 @@ class _S7SerdesTX(Module):
         ]
 
         # Data output (DDR with sys4x)
-        self.data = data = Signal(8)
+        self.data = data = Signal(rate)
         data_serialized  = Signal()
         self.comb += data.eq(datapath.source.data)
         self.specials += [
             Instance("OSERDESE2",
-                p_DATA_WIDTH     = 8,
+                p_DATA_WIDTH     = rate,
                 p_TRISTATE_WIDTH = 1,
                 p_DATA_RATE_OQ   = "DDR",
                 p_DATA_RATE_TQ   = "BUF",
@@ -89,17 +90,10 @@ class _S7SerdesTX(Module):
 
                 i_OCE    = 1,
                 i_RST    = ResetSignal("sys"),
-                i_CLK    = ClockSignal("sys4x"),
+                i_CLK    = ClockSignal(f"sys{rate//2}x"),
                 i_CLKDIV = ClockSignal("sys"),
-                i_D1     = data[0],
-                i_D2     = data[1],
-                i_D3     = data[2],
-                i_D4     = data[3],
-                i_D5     = data[4],
-                i_D6     = data[5],
-                i_D7     = data[6],
-                i_D8     = data[7],
                 o_OQ     = data_serialized,
+                **{f"i_D{i+1}" : data[i] for i in range(rate)},
             ),
             DifferentialOutput(data_serialized, pads.tx_p, pads.tx_n)
         ]
@@ -107,7 +101,8 @@ class _S7SerdesTX(Module):
 # S7 SerDes RX -------------------------------------------------------------------------------------
 
 class _S7SerdesRX(Module):
-    def __init__(self, pads):
+    def __init__(self, pads, rate=8):
+        assert rate in [4,6,8] # all supported single oserdese2 ddr rates
         # Control
         self.delay_rst     = Signal()
         self.delay_inc     = Signal()
@@ -128,7 +123,7 @@ class _S7SerdesRX(Module):
         # Data input (DDR with sys4x)
         data_nodelay      = Signal()
         data_delayed      = Signal()
-        self.data = data  = Signal(8)
+        self.data = data  = Signal(rate)
         self.specials += [
             DifferentialInput(pads.rx_p, pads.rx_n, data_nodelay),
             Instance("IDELAYE2",
@@ -150,7 +145,7 @@ class _S7SerdesRX(Module):
                 o_DATAOUT  = data_delayed,
             ),
             Instance("ISERDESE2",
-                p_DATA_WIDTH     = 8,
+                p_DATA_WIDTH     = rate,
                 p_DATA_RATE      = "DDR",
                 p_SERDES_MODE    = "MASTER",
                 p_INTERFACE_TYPE = "NETWORKING",
@@ -160,23 +155,16 @@ class _S7SerdesRX(Module):
                 i_DDLY    = data_delayed,
                 i_CE1     = 1,
                 i_RST     = ResetSignal("sys"),
-                i_CLK     = ClockSignal("sys4x"),
-                i_CLKB    =~ClockSignal("sys4x"),
+                i_CLK     = ClockSignal(f"sys{rate//2}x"),
+                i_CLKB    =~ClockSignal(f"sys{rate//2}x"),
                 i_CLKDIV  = ClockSignal("sys"),
                 i_BITSLIP = self.shift,
-                o_Q8      = data[0],
-                o_Q7      = data[1],
-                o_Q6      = data[2],
-                o_Q5      = data[3],
-                o_Q4      = data[4],
-                o_Q3      = data[5],
-                o_Q2      = data[6],
-                o_Q1      = data[7],
+                **{f"o_Q{rate-i}" : data[i] for i in range(rate)},
             )
         ]
 
         # Datapath
-        self.submodules.datapath = datapath = RXDatapath(8)
+        self.submodules.datapath = datapath = RXDatapath(rate)
         self.comb += [
             datapath.sink.valid.eq(1),
             datapath.sink.data.eq(data),
@@ -190,7 +178,7 @@ class _S7SerdesRX(Module):
 
 @ResetInserter()
 class S7Serdes(Module):
-    def __init__(self, pads, mode="master"):
-        self.submodules.clocking = _S7SerdesClocking(pads, mode)
-        self.submodules.tx       = _S7SerdesTX(pads)
-        self.submodules.rx       = _S7SerdesRX(pads)
+    def __init__(self, pads, mode="master", rate=8):
+        self.submodules.clocking = _S7SerdesClocking(pads, mode, rate)
+        self.submodules.tx       = _S7SerdesTX(pads, rate)
+        self.submodules.rx       = _S7SerdesRX(pads, rate)

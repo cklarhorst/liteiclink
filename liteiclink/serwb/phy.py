@@ -14,6 +14,7 @@ from litex.soc.interconnect.csr import *
 
 from liteiclink.serwb.kuserdes import KUSerdes
 from liteiclink.serwb.s7serdes import S7Serdes
+from liteiclink.serwb.s6serdes import S6Serdes
 from liteiclink.serwb.efinixserdes import EfinixSerdes
 
 
@@ -417,7 +418,18 @@ class SERWBPHY(Module, AutoCSR):
             assert clk_ratio == "1:1"
             taps = 32
             self.serdes = S7Serdes(pads, mode, serdes_data_width)
-
+        
+        # Xilinx Spartan6
+        elif device[:4] == "xc6s":
+            # See Design Advisory for Spartan-6 Table2:
+            # https://support.xilinx.com/s/article/38408?language=en_US
+            max_taps = {188: 107, 200: 101, 266:72, 333: 54, 400: 43, 533: 28, 625: 22,
+                        667: 20, 800: 14, 945: 9, 1000: 8, 1050: 7, 1080: 6}
+            sys_freq = 50 # todo: how to get that information?
+            datarate = sys_freq * serdes_data_width
+            datarate_in_max_taps = max((x for x in max_taps.keys() if x <= datarate))
+            taps = max_taps[datarate_in_max_taps]
+            self.serdes = S6Serdes(pads, mode, serdes_data_width)
 
         # Efinix Titanium.
         elif device[:2] == "Ti":
